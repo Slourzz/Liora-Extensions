@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "id": "ytmusic",
+  "displayName": "YouTube Music",
+  "version": "1.0.0",
+  "description": "Proveedor de busqueda y audio de YouTube Music. Busca por la API interna que usa el reproductor web y resuelve la pista con el cliente ANDROID_VR, que devuelve el audio ya firmado. Entrega un flujo reproducible, no descargas: YouTube no autoriza guardar su catalogo.",
+  "author": "Liora",
+  "homepage": "https://music.youtube.com",
+  "type": [
+    "metadata_provider",
+    "track_search_provider",
+    "audio_source_provider"
+  ],
+  "minLioraVersion": "1.0",
+  "requiredFeatures": [
+    "jsRuntime@1"
+  ],
+  "permissions": {
+    "network": [
+      "music.youtube.com",
+      "youtubei.googleapis.com",
+      "*.googlevideo.com"
+    ],
+    "storage": true,
+    "file": false
+  },
+  "entrypoint": "src/index.js"
+}
