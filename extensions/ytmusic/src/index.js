@@ -60,7 +60,7 @@ var PLAYER_CLIENTS = [
         id: 3,
         key: PLAYER_KEY,
         userAgent: "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip",
-        headers: { "Range": "bytes=0-" }
+        headers: null
     },
     {
         name: "IOS",
@@ -69,6 +69,14 @@ var PLAYER_CLIENTS = [
         key: PLAYER_KEY,
         userAgent: "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
         headers: { "Range": "bytes=0-" }
+    },
+    {
+        name: "WEB_REMIX",
+        version: "1.20250310.01.00",
+        id: 67,
+        key: WEB_KEY,
+        userAgent: "Mozilla/5.0",
+        headers: null
     }
 ];
 
@@ -365,13 +373,16 @@ function headersFor(client) {
 function pickAudio(data) {
     var formats = (data.streamingData && data.streamingData.adaptiveFormats) || [];
     var audio = null;
+    var seen = [];
     for (var i = 0; i < formats.length; i++) {
         var format = formats[i];
         if (!format.mimeType || format.mimeType.indexOf("audio/") !== 0) continue;
+        seen.push(format.itag + (format.url ? ":url" : (format.signatureCipher ? ":cifrado" : ":?")));
         if (!format.url) continue;
         // itag 140 es AAC-LC en m4a: el que mejor se lleva Media3.
         if (!audio || format.itag === 140) audio = format;
     }
+    if (seen.length) host.log.info("Formatos de audio: " + seen.join(", "));
     return audio;
 }
 
