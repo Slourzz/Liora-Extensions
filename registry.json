@@ -42,10 +42,10 @@
       "id": "ytmusic",
       "name": "ytmusic",
       "display_name": "YouTube Music",
-      "version": "1.0.1",
+      "version": "1.0.2",
       "description": "Proveedor de busqueda y audio de YouTube Music. Busca por la API interna que usa el reproductor web y resuelve la pista con el cliente ANDROID_VR, que devuelve el audio ya firmado. Entrega un flujo reproducible, no descargas: YouTube no autoriza guardar su catalogo.",
       "download_url": "https://raw.githubusercontent.com/Slourzz/Liora-Extensions/main/packages/ytmusic.lioraext",
-      "sha256": "3ca1d65062393151f0c95d957382d7c02da86e95398217b6288e151ddfbcddd9",
+      "sha256": "21e961a344d56a1fef6490b1df2e070f8ad0d5387ced90599bbe1ab9a6fa8325",
       "category": "demo",
       "tags": [
         "demo",

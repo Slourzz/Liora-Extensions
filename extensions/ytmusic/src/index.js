@@ -130,6 +130,14 @@ function durationMs(text) {
     return seconds * 1000;
 }
 
+// Las etiquetas de tipo que aparecen en la segunda columna, en varios
+// idiomas, y que no son el artista.
+var TYPES = [
+    "Song", "Video", "Album", "Artist", "Playlist", "Single", "Episode",
+    "Cancion", "Canciones", "Video", "Album", "Artista", "Lista de reproduccion",
+    "Musique", "Chanson", "Album", "Kunstler", "Single", "Lied"
+];
+
 function toTrack(item) {
     // El id esta en el boton de play del overlay; en las listas antiguas
     // venia en el navigationEndpoint del propio item.
@@ -144,22 +152,53 @@ function toTrack(item) {
     }
     if (!id) return null;
 
+    // Las columnas: la primera es el titulo; la segunda es "Cancion - 5:29"
+    // o, en el formato antiguo, "Artista - Album". El tipo y la duracion se
+    // distinguen por su forma.
     var title = "";
     var artist = "";
+    var length = "";
     var flex = item.flexColumns || [];
     for (var i = 0; i < flex.length; i++) {
         var column = flex[i].musicResponsiveListItemFlexColumnRenderer;
-        var text = firstText(column ? column.text : null);
-        if (!text) continue;
-        if (i === 0) title = text;
-        else if (i === 1) artist = text;
+        if (!column) continue;
+        var pieces = [];
+        var runs = (column.text && column.text.runs) || [];
+        for (var r = 0; r < runs.length; r++) {
+            if (runs[r].text) pieces.push(runs[r].text);
+        }
+        if (i === 0) {
+            title = pieces.join("");
+            continue;
+        }
+        for (var p = 0; p < pieces.length; p++) {
+            var piece = pieces[p].trim();
+            if (!piece || piece === "•" || piece === "-") continue;
+            if (/^[0-9]+:[0-9]+$/.test(piece)) {
+                if (!length) length = piece;
+                continue;
+            }
+            if (TYPES.indexOf(piece) >= 0) continue;
+            // "1.8M plays" y cosas assim no son el artista.
+            if (/^[0-9.,]+[KMB]?\s*(plays|reproducciones|oyentes)$/i.test(piece)) continue;
+            if (!artist) artist = piece;
+        }
     }
-    var length = "";
-    var fixed = item.fixedColumns || [];
-    if (fixed.length) {
-        var fixedColumn = fixed[0].musicResponsiveListItemFixedColumnRenderer;
-        length = firstText(fixedColumn ? fixedColumn.text : null);
+
+    // En el formato antiguo la duracion va en una columna fija aparte.
+    if (!length) {
+        var fixed = item.fixedColumns || [];
+        for (var f = 0; f < fixed.length; f++) {
+            var fixedColumn = fixed[f].musicResponsiveListItemFixedColumnRenderer;
+            if (!fixedColumn) continue;
+            var fixedText = firstText(fixedColumn.text);
+            if (fixedText && /^[0-9]+:[0-9]+$/.test(fixedText.trim())) {
+                length = fixedText.trim();
+                break;
+            }
+        }
     }
+
     var cover = "";
     var thumbs = item.thumbnail && item.thumbnail.musicThumbnailRenderer
         ? item.thumbnail.musicThumbnailRenderer.thumbnail.thumbnails : null;
@@ -177,13 +216,12 @@ function toTrack(item) {
 
 function searchTracks(request) {
     var query = request.query || "";
-    // El parametro "params" pide solo canciones (no albumes ni artistas):
-    // la respuesta del servidor baja de 795 KB a 607 KB, que en una conexion
-    // lenta es la diferencia entre que llegue y no llegue.
+    // Sin filtros: el parametro "params" de la API (el de "solo canciones")
+    // hace que el servidor devuelva albumes y listas en vez de pistas, sin
+    // id de video, y la busqueda se queda vacia.
     var data = innertube("music.youtube.com", WEB_KEY, "search", WEB_CLIENT, {
         context: clientContext(WEB_CLIENT),
-        query: query,
-        params: "EgWKAQIYAWoKEAkQBRAKEAMQBA%3D%3D"
+        query: query
     });
     var items = findAll(data, "musicResponsiveListItemRenderer", [], 0);
     var tracks = [];
@@ -210,7 +248,10 @@ function getTrack(request) {
 }
 
 /** Los datos de la pista y su URL de audio, del endpoint de reproduccion. */
+var playerCache = {};
+
 function playerInfo(videoId) {
+    if (playerCache[videoId]) return playerCache[videoId];
     var data = innertube("youtubei.googleapis.com", PLAYER_KEY, "player", PLAYER_CLIENT, {
         context: clientContext(PLAYER_CLIENT),
         videoId: videoId
@@ -228,7 +269,7 @@ function playerInfo(videoId) {
     var artwork = null;
     var thumbs = details.thumbnail && details.thumbnail.thumbnails;
     if (thumbs && thumbs.length) artwork = thumbs[thumbs.length - 1].url || null;
-    return {
+    var info = {
         title: details.title || "",
         artist: details.author || "",
         album: "",
@@ -239,6 +280,8 @@ function playerInfo(videoId) {
         bitrateKbps: audio && audio.bitrate ? Math.round(audio.bitrate / 1000) : null,
         sampleRateHz: audio && audio.audioSampleRate ? audio.audioSampleRate : null
     };
+    playerCache[videoId] = info;
+    return info;
 }
 
 function checkAvailability(request) {
