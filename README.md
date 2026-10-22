@@ -31,17 +31,21 @@ nunca aparece como proveedor de descarga.
 | `audio_download_provider` | Un archivo completo que se puede descargar. |
 | `lyrics_provider` | La letra, con o sin sincronizar. |
 
-## El repositorio
+## Estructura de este repositorio
 
-Este repositorio **es** un repositorio de extensiones: su `registry.json` es
-lo que Liora consulta cuando el usuario añade la dirección del repositorio.
-
-- `registry.json` — el catálogo: identificador, versión, descripción, URL del
-  paquete y el **SHA-256** que Liora comprueba al descargar.
-- `extensions/` — el código fuente de cada extensión.
-- `packages/` — los paquetes construidos, listos para descargarse.
-- `schemas/` — los esquemas JSON del manifiesto y del registro.
-- `scripts/build_packages.py` — construye los paquetes y refresca el registro.
+```
+Liora-Extensions/
+├── registry.json              # el catálogo: lo que consulta Liora
+├── extensions/
+│   └── demo-audio/            # una extensión: su manifiesto y su código
+│       ├── manifest.json
+│       ├── src/index.js
+│       └── tests/
+├── packages/                  # los paquetes construidos, listos para bajar
+├── schemas/                   # los esquemas JSON del manifiesto y del registro
+├── scripts/build_packages.py  # construye los paquetes y refresca el registro
+└── .github/workflows/         # comprueba que el registro y los paquetes cuadran
+```
 
 ## Publicar una extensión
 
@@ -98,6 +102,9 @@ registerExtension({
 
 No hace falta implementar todas: cada extensión implementa las que necesita
 y las declara en su manifiesto.
+
+El JavaScript es **ES5** (`var`, funciones clásicas): el motor de Liora es
+Rhino y no entiende `const`, `let`, funciones flecha ni clases.
 
 ## La extensión de demostración
 
