@@ -177,9 +177,13 @@ function toTrack(item) {
 
 function searchTracks(request) {
     var query = request.query || "";
+    // El parametro "params" pide solo canciones (no albumes ni artistas):
+    // la respuesta del servidor baja de 795 KB a 607 KB, que en una conexion
+    // lenta es la diferencia entre que llegue y no llegue.
     var data = innertube("music.youtube.com", WEB_KEY, "search", WEB_CLIENT, {
         context: clientContext(WEB_CLIENT),
-        query: query
+        query: query,
+        params: "EgWKAQIYAWoKEAkQBRAKEAMQBA%3D%3D"
     });
     var items = findAll(data, "musicResponsiveListItemRenderer", [], 0);
     var tracks = [];

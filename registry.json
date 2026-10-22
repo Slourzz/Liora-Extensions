@@ -45,7 +45,7 @@
       "version": "1.0.0",
       "description": "Proveedor de busqueda y audio de YouTube Music. Busca por la API interna que usa el reproductor web y resuelve la pista con el cliente ANDROID_VR, que devuelve el audio ya firmado. Entrega un flujo reproducible, no descargas: YouTube no autoriza guardar su catalogo.",
       "download_url": "https://raw.githubusercontent.com/Slourzz/Liora-Extensions/main/packages/ytmusic.lioraext",
-      "sha256": "027159fbdd468d081f6d25af4784276db12093db733a4eeeea392afc3ef9e2c8",
+      "sha256": "ae9228fa3d8408b30490276516324103bd1f4a722cb3b5c830f16320181d6139",
       "category": "demo",
       "tags": [
         "demo",
