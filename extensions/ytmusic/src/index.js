@@ -299,9 +299,12 @@ function playerInfo(videoId) {
         mimeType: audio ? String(audio.mimeType).split(";")[0].trim() : null,
         bitrateKbps: audio && audio.bitrate ? Math.round(audio.bitrate / 1000) : null,
         sampleRateHz: audio && audio.audioSampleRate ? audio.audioSampleRate : null,
-        // El servidor de video comprueba el agente de usuario: sin el mismo
-        // que pidio la fuente, responde 403.
-        headers: { "User-Agent": PLAYER_CLIENT.userAgent }
+        // El servidor de video comprueba el agente de usuario y pide la
+        // peticion por rango: sin las dos cosas responde 403.
+        headers: {
+            "User-Agent": PLAYER_CLIENT.userAgent,
+            "Range": "bytes=0-"
+        }
     };
     playerCache[videoId] = info;
     return info;
