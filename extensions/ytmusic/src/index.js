@@ -39,13 +39,28 @@ var PLAYER_CLIENT = {
     userAgent: "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip"
 };
 /**
- * El cliente de la reproduccion.
+ * Los clientes de la reproduccion, en orden de preferencia.
  *
- * Es el de Android: sus direcciones de audio vienen completas y se pueden
- * usar tal cual. El cliente web las devuelve cifradas, que esta extension no
- * sabe descifrar.
+ * El de Android y el de iPhone devuelven las direcciones de audio
+ * completas: se pueden usar tal cual. Se prueban los dos porque no siempre
+ * el servidor acepta el del primero.
  */
-var WEB_PLAYER_CLIENT = PLAYER_CLIENT;
+var PLAYER_CLIENTS = [
+    {
+        name: "ANDROID",
+        version: "20.10.38",
+        id: 3,
+        key: PLAYER_KEY,
+        userAgent: "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip"
+    },
+    {
+        name: "IOS",
+        version: "20.10.4",
+        id: 5,
+        key: PLAYER_KEY,
+        userAgent: "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)"
+    }
+];
 
 var state = {
     visitorData: null,
@@ -82,8 +97,12 @@ function clientContext(client) {
         context.client.osName = "Android";
         context.client.osVersion = "14";
     }
-    if (client.name === "WEB_REMIX") {
-        context.client.userAgent = client.userAgent;
+    if (client.name === "IOS") {
+        context.client.deviceMake = "Apple";
+        context.client.deviceModel = "iPhone16,2";
+        context.client.osName = "iPhone";
+        context.client.osVersion = "18.3.2.22D82";
+        context.client.clientFormFactor = "SMALL_FORM_FACTOR";
     }
     if (state.visitorData) context.client.visitorData = state.visitorData;
     return context;
@@ -272,20 +291,33 @@ var playerCache = {};
 
 function playerInfo(videoId) {
     if (playerCache[videoId]) return playerCache[videoId];
-    var data = innertube("youtubei.googleapis.com", PLAYER_KEY, "player", PLAYER_CLIENT, {
-        context: clientContext(PLAYER_CLIENT),
-        videoId: videoId
-    }, state.signedIn);
-    var details = data.videoDetails || {};
-    var formats = (data.streamingData && data.streamingData.adaptiveFormats) || [];
+    var data = null;
+    var client = null;
     var audio = null;
-    for (var i = 0; i < formats.length; i++) {
-        var format = formats[i];
-        if (!format.mimeType || format.mimeType.indexOf("audio/") !== 0) continue;
-        if (!format.url) continue;
-        // itag 140 es AAC-LC en m4a: el que mejor se lleva Media3.
-        if (!audio || format.itag === 140) audio = format;
+    // Se prueban los clientes hasta que uno de de una direccion de audio
+    // que se pueda usar: algunos servidores rechazan el del primero.
+    for (var c = 0; c < PLAYER_CLIENTS.length; c++) {
+        var candidate = PLAYER_CLIENTS[c];
+        var response = innertube("youtubei.googleapis.com", candidate.key, "player", candidate, {
+            context: clientContext(candidate),
+            videoId: videoId
+        }, state.signedIn);
+        var found = pickAudio(response);
+        if (found) {
+            data = response;
+            client = candidate;
+            audio = found;
+            break;
+        }
     }
+    if (!audio) {
+        // Ningun cliente dio una direccion: se deja vacio y la app lo dice.
+        playerCache[videoId] = { url: null, title: "", artist: "", durationMs: 0,
+            artworkUrl: null, headers: {}, mimeType: null, bitrateKbps: null,
+            sampleRateHz: null };
+        return playerCache[videoId];
+    }
+    var details = data.videoDetails || {};
     var artwork = null;
     var thumbs = details.thumbnail && details.thumbnail.thumbnails;
     if (thumbs && thumbs.length) artwork = thumbs[thumbs.length - 1].url || null;
@@ -302,12 +334,26 @@ function playerInfo(videoId) {
         // El servidor de video comprueba el agente de usuario y pide la
         // peticion por rango: sin las dos cosas responde 403.
         headers: {
-            "User-Agent": PLAYER_CLIENT.userAgent,
+            "User-Agent": client.userAgent,
             "Range": "bytes=0-"
         }
     };
     playerCache[videoId] = info;
     return info;
+}
+
+/** El formato de audio mejor de una respuesta del reproductor. */
+function pickAudio(data) {
+    var formats = (data.streamingData && data.streamingData.adaptiveFormats) || [];
+    var audio = null;
+    for (var i = 0; i < formats.length; i++) {
+        var format = formats[i];
+        if (!format.mimeType || format.mimeType.indexOf("audio/") !== 0) continue;
+        if (!format.url) continue;
+        // itag 140 es AAC-LC en m4a: el que mejor se lleva Media3.
+        if (!audio || format.itag === 140) audio = format;
+    }
+    return audio;
 }
 
 function checkAvailability(request) {

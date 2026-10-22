@@ -42,10 +42,10 @@
       "id": "ytmusic",
       "name": "ytmusic",
       "display_name": "YouTube Music",
-      "version": "1.1.3",
+      "version": "1.1.4",
       "description": "Proveedor de busqueda y audio de YouTube Music. Busca por la API interna que usa el reproductor web y resuelve la pista con el cliente ANDROID, que devuelve el audio ya firmado. Con iniciar sesion en YouTube Music desde Liora, YouTube deja de bloquear el audio y se puede escuchar y descargar la pista entera.",
       "download_url": "https://raw.githubusercontent.com/Slourzz/Liora-Extensions/main/packages/ytmusic.lioraext",
-      "sha256": "64de44540f273252c6cbf9e3aab56de9120d34bd89602dae5b67cc7581d9334e",
+      "sha256": "55f8860a6b7baf4e7c3650d513d6c10914811dc2d9dd175625f4603b9a7fb5e2",
       "category": "demo",
       "tags": [
         "demo",
