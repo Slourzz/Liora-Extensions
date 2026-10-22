@@ -53,10 +53,11 @@ function post(hostname, pathAndQuery, body, headers) {
 
     // El host de mentira: devuelve la respuesta real.
     const host = {
-        http: function (method, url, body, headers) {
+        http: function (method, url, body, headers, useSession) {
             return { ok: true, statusCode: 200, body: raw };
         },
         storage: { get: function () { return null; }, set: function () { return { ok: true }; } },
+        session: { has: function () { return false; } },
         log: { info: function () {}, warn: function () {}, error: function () {} }
     };
 

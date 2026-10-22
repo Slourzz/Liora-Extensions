@@ -82,8 +82,11 @@ const playerResponse = {
 };
 
 const host = {
-    http: function (method, url, body, headers) {
-        requests.push({ method: method, url: url, body: body, headers: headers || {} });
+    http: function (method, url, body, headers, useSession) {
+        requests.push({
+            method: method, url: url, body: body,
+            headers: headers || {}, useSession: !!useSession
+        });
         if (url.indexOf("/search") >= 0) {
             return { ok: true, statusCode: 200, body: JSON.stringify(searchResponse) };
         }
@@ -93,6 +96,7 @@ const host = {
         return { ok: false, statusCode: 404, body: "{}" };
     },
     storage: { get: function () { return null; }, set: function () { return { ok: true }; } },
+    session: { has: function () { return false; } },
     log: { info: function () {}, warn: function () {}, error: function () {} }
 };
 
@@ -141,21 +145,25 @@ check("la fuente es reproducible", availability.kinds[0] === "playable");
 
 const playableSource = registered.getAudioSource({ trackId: "abc123" });
 check("la fuente trae la url de audio", playableSource.url.indexOf("googlevideo.com") >= 0);
-check("la fuente es m4a", playableSource.mimeType === "audio/mp4");
+check("la fuente es m4a", playableSource.mimeType.indexOf("audio/mp4") === 0);
 check("la fuente trae la duracion", playableSource.durationMs === 244000);
 
 const search = requests.filter(function (r) { return r.url.indexOf("/search") >= 0; })[0];
 check("la busqueda va con el cliente WEB_REMIX",
     search.headers["X-YouTube-Client-Name"] === "67");
 const player = requests.filter(function (r) { return r.url.indexOf("/player") >= 0; })[0];
-check("el player va con el cliente ANDROID_VR",
-    player.headers["X-YouTube-Client-Name"] === "28");
-check("el player va con la version que no pide token",
-    player.headers["X-YouTube-Client-Version"] === "1.62.27");
+check("el player va con el cliente ANDROID",
+    player.headers["X-YouTube-Client-Name"] === "3");
+check("el player va con la version que sirve el audio entero",
+    player.headers["X-YouTube-Client-Version"] === "20.10.38");
 
-const denied = registered.getDownloadUrl({ trackId: "abc123" });
-check("no hay descarga", !denied.url);
-check("el motivo dice que no se puede descargar", String(denied.error).length > 0);
+const downloadable = registered.getDownloadUrl({ trackId: "abc123" });
+check("la descarga trae la url de audio", downloadable.url.indexOf("googlevideo.com") >= 0);
+check("la descarga es descargable", downloadable.kind === "downloadable");
+check("la descarga trae el agente de usuario",
+    downloadable.headers["User-Agent"].indexOf("com.google.android.youtube") === 0);
+check("la disponibilidad ofrece descarga",
+    availability.kinds.indexOf("downloadable") >= 0);
 
 console.log(failures === 0 ? "todo correcto" : failures + " fallos");
 process.exit(failures === 0 ? 0 : 1);

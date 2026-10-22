@@ -33,25 +33,30 @@ var WEB_CLIENT = {
     id: 67
 };
 var PLAYER_CLIENT = {
-    name: "ANDROID_VR",
-    version: "1.62.27",
-    id: 28,
-    userAgent: "com.google.android.apps.youtube.vr.oculus/1.62.27 (Linux; U; Android 12L) gzip"
+    name: "ANDROID",
+    version: "20.10.38",
+    id: 3,
+    userAgent: "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip"
 };
 
 var state = {
-    visitorData: null
+    visitorData: null,
+    signedIn: false
 };
 
 function initialize(config) {
     var saved = host.storage.get("visitorData");
     if (saved) state.visitorData = saved;
-    host.log.info("ytmusic inicializado");
+    // El usuario puede haber iniciado sesion en Liora: con sesion, YouTube
+    // deja de pedir el reto de "no eres un bot" y sirve el audio entero.
+    state.signedIn = host.session.has("youtube");
+    host.log.info("ytmusic inicializado" + (state.signedIn ? " (con sesion)" : ""));
     return { ok: true };
 }
 
 function cleanup() {
     state.visitorData = null;
+    state.signedIn = false;
     return { ok: true };
 }
 
@@ -64,19 +69,22 @@ function clientContext(client) {
             gl: "US"
         }
     };
-    if (client.name === "ANDROID_VR") {
-        context.client.deviceMake = "Oculus";
-        context.client.deviceModel = "Quest 3";
-        context.client.androidSdkVersion = 32;
+    if (client.name === "ANDROID") {
+        context.client.androidSdkVersion = 34;
         context.client.osName = "Android";
-        context.client.osVersion = "12L";
+        context.client.osVersion = "14";
     }
     if (state.visitorData) context.client.visitorData = state.visitorData;
     return context;
 }
 
-/** Una peticion a Innertube. */
-function innertube(hostname, key, endpoint, client, payload) {
+/**
+ * Una peticion a Innertube.
+ *
+ * Con sesion iniciada, la app anade las cookies y la firma: sin ellas,
+ * YouTube responde con un reto anti-bot y no da ninguna fuente de audio.
+ */
+function innertube(hostname, key, endpoint, client, payload, useSession) {
     var body = JSON.stringify(payload);
     var response = host.http("POST",
         "https://" + hostname + "/youtubei/v1/" + endpoint + "?key=" + key,
@@ -86,7 +94,8 @@ function innertube(hostname, key, endpoint, client, payload) {
             "X-YouTube-Client-Name": String(client.id),
             "X-YouTube-Client-Version": client.version,
             "User-Agent": client.userAgent || "Mozilla/5.0"
-        });
+        },
+        !!useSession);
     if (!response || !response.ok) {
         throw new Error("YouTube respondio " + (response ? response.statusCode : "sin respuesta"));
     }
@@ -255,7 +264,7 @@ function playerInfo(videoId) {
     var data = innertube("youtubei.googleapis.com", PLAYER_KEY, "player", PLAYER_CLIENT, {
         context: clientContext(PLAYER_CLIENT),
         videoId: videoId
-    });
+    }, state.signedIn);
     var details = data.videoDetails || {};
     var formats = (data.streamingData && data.streamingData.adaptiveFormats) || [];
     var audio = null;
@@ -276,9 +285,12 @@ function playerInfo(videoId) {
         durationMs: details.lengthSeconds ? details.lengthSeconds * 1000 : 0,
         artworkUrl: artwork,
         url: audio ? audio.url : null,
-        mimeType: audio ? audio.mimeType : null,
+        mimeType: audio ? String(audio.mimeType).split(";")[0].trim() : null,
         bitrateKbps: audio && audio.bitrate ? Math.round(audio.bitrate / 1000) : null,
-        sampleRateHz: audio && audio.audioSampleRate ? audio.audioSampleRate : null
+        sampleRateHz: audio && audio.audioSampleRate ? audio.audioSampleRate : null,
+        // El servidor de video comprueba el agente de usuario: sin el mismo
+        // que pidio la fuente, responde 403.
+        headers: { "User-Agent": PLAYER_CLIENT.userAgent }
     };
     playerCache[videoId] = info;
     return info;
@@ -293,7 +305,7 @@ function checkAvailability(request) {
             reason: "YouTube Music no ha devuelto una fuente de audio para esta pista"
         };
     }
-    return { available: true, kinds: ["playable"], quality: "AAC" };
+    return { available: true, kinds: ["playable", "downloadable"], quality: "AAC" };
 }
 
 function getAudioSource(request) {
@@ -304,27 +316,65 @@ function getAudioSource(request) {
     return {
         kind: "playable",
         url: info.url,
-        mimeType: "audio/mp4",
+        mimeType: info.mimeType || "audio/mp4",
         bitrateKbps: info.bitrateKbps,
         sampleRateHz: info.sampleRateHz,
         durationMs: info.durationMs,
-        notes: "Flujo de YouTube Music (cliente ANDROID_VR 1.62.27); el enlace caduca"
+        headers: info.headers || {},
+        notes: "Flujo de YouTube Music (cliente ANDROID 20.10.38); el enlace caduca"
     };
 }
 
 /**
- * YouTube Music no autoriza la descarga de su contenido, asi que la extension
- * no la ofrece: entrega el flujo para reproducirlo.
+ * La direccion desde la que se puede descargar la pista.
+ *
+ * Es la misma fuente que se reproduce: la app la baja y comprueba que el
+ * fichero esta completo antes de publicarlo.
  */
 function getDownloadUrl(request) {
-    return { error: "YouTube Music no autoriza la descarga de su catalogo" };
+    var info = playerInfo(request.trackId);
+    if (!info || !info.url) {
+        return { error: "YouTube Music no ha devuelto una fuente de audio para esta pista" };
+    }
+    return {
+        kind: "downloadable",
+        url: info.url,
+        mimeType: info.mimeType || "audio/mp4",
+        bitrateKbps: info.bitrateKbps,
+        durationMs: info.durationMs,
+        headers: info.headers || {},
+        notes: "Descarga del flujo de YouTube Music; el enlace caduca"
+    };
 }
 
+/**
+ * Descarga la pista al fichero de salida.
+ *
+ * La extension no baja el fichero por su cuenta: pide a la app que lo haga,
+ * que es quien comprueba el tamaño y el formato antes de publicarlo.
+ */
 function download(request) {
+    var info = playerInfo(request.trackId);
+    if (!info || !info.url) {
+        return {
+            success: false,
+            error: "YouTube Music no ha devuelto una fuente de audio para esta pista",
+            errorType: "not_supported"
+        };
+    }
+    var result = host.file.download(info.url, request.outputPath);
+    if (!result || !result.ok || !result.success) {
+        return {
+            success: false,
+            error: (result && result.error) ? result.error : "No se pudo descargar el audio",
+            errorType: (result && result.errorType) ? result.errorType : "download_failed"
+        };
+    }
     return {
-        success: false,
-        error: "YouTube Music no autoriza la descarga de su catalogo",
-        errorType: "not_supported"
+        success: true,
+        filePath: request.outputPath,
+        bytes: result.bytes || 0,
+        mimeType: info.mimeType || "audio/mp4"
     };
 }
 
