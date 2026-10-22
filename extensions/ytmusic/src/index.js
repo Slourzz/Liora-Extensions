@@ -38,6 +38,20 @@ var PLAYER_CLIENT = {
     id: 3,
     userAgent: "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip"
 };
+/**
+ * El cliente de la reproduccion.
+ *
+ * Con sesion iniciada se usa el mismo que usa el reproductor web: sus
+ * direcciones de audio se piden como una descarga normal. Sin sesion, el
+ * cliente ANDROID es el que responde, pero sus direcciones solo se sirven por
+ * trozos.
+ */
+var WEB_PLAYER_CLIENT = {
+    name: "WEB_REMIX",
+    version: "1.20250310.01.00",
+    id: 67,
+    userAgent: "Mozilla/5.0"
+};
 
 var state = {
     visitorData: null,
@@ -73,6 +87,9 @@ function clientContext(client) {
         context.client.androidSdkVersion = 34;
         context.client.osName = "Android";
         context.client.osVersion = "14";
+    }
+    if (client.name === "WEB_REMIX") {
+        context.client.userAgent = client.userAgent;
     }
     if (state.visitorData) context.client.visitorData = state.visitorData;
     return context;
@@ -261,8 +278,10 @@ var playerCache = {};
 
 function playerInfo(videoId) {
     if (playerCache[videoId]) return playerCache[videoId];
-    var data = innertube("youtubei.googleapis.com", PLAYER_KEY, "player", PLAYER_CLIENT, {
-        context: clientContext(PLAYER_CLIENT),
+    var client = state.signedIn ? WEB_PLAYER_CLIENT : PLAYER_CLIENT;
+    var key = state.signedIn ? WEB_KEY : PLAYER_KEY;
+    var data = innertube("youtubei.googleapis.com", key, "player", client, {
+        context: clientContext(client),
         videoId: videoId
     }, state.signedIn);
     var details = data.videoDetails || {};
@@ -290,7 +309,7 @@ function playerInfo(videoId) {
         sampleRateHz: audio && audio.audioSampleRate ? audio.audioSampleRate : null,
         // El servidor de video comprueba el agente de usuario: sin el mismo
         // que pidio la fuente, responde 403.
-        headers: { "User-Agent": PLAYER_CLIENT.userAgent }
+        headers: { "User-Agent": (state.signedIn ? WEB_PLAYER_CLIENT : PLAYER_CLIENT).userAgent }
     };
     playerCache[videoId] = info;
     return info;
