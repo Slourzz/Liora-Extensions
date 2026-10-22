@@ -152,16 +152,16 @@ const search = requests.filter(function (r) { return r.url.indexOf("/search") >=
 check("la busqueda va con el cliente WEB_REMIX",
     search.headers["X-YouTube-Client-Name"] === "67");
 const player = requests.filter(function (r) { return r.url.indexOf("/player") >= 0; })[0];
-check("el player va con el cliente ANDROID",
-    player.headers["X-YouTube-Client-Name"] === "3");
+check("el player va con el cliente que sirve el audio entero",
+    player.headers["X-YouTube-Client-Name"] === "28");
 check("el player va con la version que sirve el audio entero",
-    player.headers["X-YouTube-Client-Version"] === "20.10.38");
+    player.headers["X-YouTube-Client-Version"] === "1.62.27");
 
 const downloadable = registered.getDownloadUrl({ trackId: "abc123" });
 check("la descarga trae la url de audio", downloadable.url.indexOf("googlevideo.com") >= 0);
 check("la descarga es descargable", downloadable.kind === "downloadable");
 check("la descarga trae el agente de usuario",
-    downloadable.headers["User-Agent"].indexOf("com.google.android.youtube") === 0);
+    downloadable.headers["User-Agent"].indexOf("com.google.android.apps.youtube.vr.oculus") === 0);
 check("la disponibilidad ofrece descarga",
     availability.kinds.indexOf("downloadable") >= 0);
 

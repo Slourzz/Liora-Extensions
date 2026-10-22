@@ -41,24 +41,34 @@ var PLAYER_CLIENT = {
 /**
  * Los clientes de la reproduccion, en orden de preferencia.
  *
- * El de Android y el de iPhone devuelven las direcciones de audio
- * completas: se pueden usar tal cual. Se prueban los dos porque no siempre
- * el servidor acepta el del primero.
+ * El de VR es el que mejor funciona: su direccion de audio se sirve entera,
+ * sin trocear. Los de Android y de iPhone se prueban despues, porque a veces
+ * el servidor no acepta el primero.
  */
 var PLAYER_CLIENTS = [
+    {
+        name: "ANDROID_VR",
+        version: "1.62.27",
+        id: 28,
+        key: PLAYER_KEY,
+        userAgent: "com.google.android.apps.youtube.vr.oculus/1.62.27 (Linux; U; Android 12L) gzip",
+        headers: null
+    },
     {
         name: "ANDROID",
         version: "20.10.38",
         id: 3,
         key: PLAYER_KEY,
-        userAgent: "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip"
+        userAgent: "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip",
+        headers: { "Range": "bytes=0-" }
     },
     {
         name: "IOS",
         version: "20.10.4",
         id: 5,
         key: PLAYER_KEY,
-        userAgent: "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)"
+        userAgent: "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
+        headers: { "Range": "bytes=0-" }
     }
 ];
 
@@ -307,6 +317,8 @@ function playerInfo(videoId) {
             data = response;
             client = candidate;
             audio = found;
+            host.log.info("Fuente de audio con el cliente " + candidate.name +
+                " (itag " + found.itag + ")");
             break;
         }
     }
@@ -331,15 +343,22 @@ function playerInfo(videoId) {
         mimeType: audio ? String(audio.mimeType).split(";")[0].trim() : null,
         bitrateKbps: audio && audio.bitrate ? Math.round(audio.bitrate / 1000) : null,
         sampleRateHz: audio && audio.audioSampleRate ? audio.audioSampleRate : null,
-        // El servidor de video comprueba el agente de usuario y pide la
-        // peticion por rango: sin las dos cosas responde 403.
-        headers: {
-            "User-Agent": client.userAgent,
-            "Range": "bytes=0-"
-        }
+        // El servidor de video comprueba el agente de usuario: sin el mismo
+        // que pidio la fuente, responde 403. Cada cliente pide ademas lo que
+        // necesita (algunos, la peticion por rango).
+        headers: headersFor(client)
     };
     playerCache[videoId] = info;
     return info;
+}
+
+/** Las cabeceras que pide cada cliente al servidor de video. */
+function headersFor(client) {
+    var headers = { "User-Agent": client.userAgent };
+    if (client.headers) {
+        for (var key in client.headers) headers[key] = client.headers[key];
+    }
+    return headers;
 }
 
 /** El formato de audio mejor de una respuesta del reproductor. */
