@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "id": "tidal-web",
+  "displayName": "TIDAL",
+  "version": "1.0.0",
+  "description": "Proveedor de TIDAL con su API oficial: busca canciones, trae los datos completos (portada, ISRC, duracion) y dice si una pista se puede reproducir. El catalogo va cifrado con DRM, asi que la extension solo entrega una fuente cuando el contenido viene sin cifrar, y no permite descargar.",
+  "author": "Liora",
+  "homepage": "https://developer.tidal.com/documentation/api-sdk/",
+  "type": [
+    "metadata_provider",
+    "track_search_provider",
+    "audio_source_provider"
+  ],
+  "minLioraVersion": "1.0",
+  "requiredFeatures": [
+    "jsRuntime@1"
+  ],
+  "permissions": {
+    "network": [
+      "api.tidal.com",
+      "auth.tidal.com",
+      "resources.tidal.com"
+    ],
+    "storage": true,
+    "file": false
+  },
+  "settings": [
+    {
+      "key": "clientId",
+      "label": "Client ID de TIDAL",
+      "type": "string",
+      "description": "El client id de tu app en developer.tidal.com",
+      "required": true,
+      "secret": true
+    },
+    {
+      "key": "clientSecret",
+      "label": "Client secret de TIDAL",
+      "type": "string",
+      "description": "El client secret de tu app en developer.tidal.com",
+      "required": true,
+      "secret": true
+    },
+    {
+      "key": "countryCode",
+      "label": "Pais",
+      "type": "string",
+      "description": "El pais de la cuenta, en dos letras",
+      "default": "US"
+    }
+  ],
+  "entrypoint": "src/index.js"
+}

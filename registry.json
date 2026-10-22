@@ -19,6 +19,24 @@
       "downloads": 0,
       "updated_at": "2026-10-22T00:00:00Z",
       "min_app_version": "1.0"
+    },
+    {
+      "id": "tidal-web",
+      "name": "tidal-web",
+      "display_name": "TIDAL",
+      "version": "1.0.0",
+      "description": "Proveedor de TIDAL con su API oficial: busca canciones, trae los datos completos (portada, ISRC, duracion) y dice si una pista se puede reproducir. El catalogo va cifrado con DRM, asi que la extension solo entrega una fuente cuando el contenido viene sin cifrar, y no permite descargar.",
+      "download_url": "https://raw.githubusercontent.com/Slourzz/Liora-Extensions/main/packages/tidal-web.lioraext",
+      "sha256": "83995f8847422396d981cb02923e3f2d119da608a3a0e4e85bfd8aa89fb69371",
+      "category": "demo",
+      "tags": [
+        "demo",
+        "audio",
+        "test"
+      ],
+      "downloads": 0,
+      "updated_at": "2026-10-22T00:00:00Z",
+      "min_app_version": "1.0"
     }
   ]
 }
