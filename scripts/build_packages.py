@@ -29,9 +29,14 @@ REGISTRY = ROOT / "registry.json"
 MANIFEST = "manifest.json"
 
 
+def read_json(path: Path) -> dict:
+    """Lee un JSON tolerando el BOM que some editores de Windows ponen."""
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
 def package(source: Path) -> bytes:
     """Empaqueta una extension en un ZIP reproducible."""
-    manifest = json.loads((source / MANIFEST).read_text(encoding="utf-8"))
+    manifest = read_json(source / MANIFEST)
     entrypoint = manifest.get("entrypoint", "src/index.js")
     if entrypoint.startswith("/") or ".." in entrypoint:
         raise ValueError(f"Punto de entrada no permitido: {entrypoint}")
@@ -82,7 +87,7 @@ def main() -> int:
     parser.add_argument("--check", action="store_true", help="Comprueba sin escribir nada")
     args = parser.parse_args()
 
-    registry = json.loads(REGISTRY.read_text(encoding="utf-8"))
+    registry = read_json(REGISTRY)
     by_id = {entry["id"]: entry for entry in registry["extensions"]}
     updated = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00Z")
 
@@ -94,7 +99,7 @@ def main() -> int:
 
     for name in names:
         source = SOURCES / name
-        manifest = json.loads((source / MANIFEST).read_text(encoding="utf-8"))
+        manifest = read_json(source / MANIFEST)
         if manifest["id"] != name:
             print(f"El id del manifiesto ({manifest['id']}) no coincide con la carpeta ({name})")
             return 1
