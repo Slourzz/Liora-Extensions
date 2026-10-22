@@ -41,17 +41,11 @@ var PLAYER_CLIENT = {
 /**
  * El cliente de la reproduccion.
  *
- * Con sesion iniciada se usa el mismo que usa el reproductor web: sus
- * direcciones de audio se piden como una descarga normal. Sin sesion, el
- * cliente ANDROID es el que responde, pero sus direcciones solo se sirven por
- * trozos.
+ * Es el de Android: sus direcciones de audio vienen completas y se pueden
+ * usar tal cual. El cliente web las devuelve cifradas, que esta extension no
+ * sabe descifrar.
  */
-var WEB_PLAYER_CLIENT = {
-    name: "WEB_REMIX",
-    version: "1.20250310.01.00",
-    id: 67,
-    userAgent: "Mozilla/5.0"
-};
+var WEB_PLAYER_CLIENT = PLAYER_CLIENT;
 
 var state = {
     visitorData: null,
@@ -278,10 +272,8 @@ var playerCache = {};
 
 function playerInfo(videoId) {
     if (playerCache[videoId]) return playerCache[videoId];
-    var client = state.signedIn ? WEB_PLAYER_CLIENT : PLAYER_CLIENT;
-    var key = state.signedIn ? WEB_KEY : PLAYER_KEY;
-    var data = innertube("youtubei.googleapis.com", key, "player", client, {
-        context: clientContext(client),
+    var data = innertube("youtubei.googleapis.com", PLAYER_KEY, "player", PLAYER_CLIENT, {
+        context: clientContext(PLAYER_CLIENT),
         videoId: videoId
     }, state.signedIn);
     var details = data.videoDetails || {};
@@ -309,7 +301,7 @@ function playerInfo(videoId) {
         sampleRateHz: audio && audio.audioSampleRate ? audio.audioSampleRate : null,
         // El servidor de video comprueba el agente de usuario: sin el mismo
         // que pidio la fuente, responde 403.
-        headers: { "User-Agent": (state.signedIn ? WEB_PLAYER_CLIENT : PLAYER_CLIENT).userAgent }
+        headers: { "User-Agent": PLAYER_CLIENT.userAgent }
     };
     playerCache[videoId] = info;
     return info;

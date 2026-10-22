@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "ytmusic",
   "displayName": "YouTube Music",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Proveedor de busqueda y audio de YouTube Music. Busca por la API interna que usa el reproductor web y resuelve la pista con el cliente ANDROID, que devuelve el audio ya firmado. Con iniciar sesion en YouTube Music desde Liora, YouTube deja de bloquear el audio y se puede escuchar y descargar la pista entera.",
   "author": "Liora",
   "homepage": "https://music.youtube.com",
