@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "updated_at": "2026-10-22T00:00:00Z",
+  "extensions": [
+    {
+      "id": "demo-audio",
+      "name": "demo-audio",
+      "display_name": "Demo Audio",
+      "version": "1.0.0",
+      "description": "Proveedor de audio de prueba. No habla con ningun servicio: sirve una pista de ejemplo empaquetada en la propia Liora, para comprobar el circuito completo de extensiones.",
+      "download_url": "https://raw.githubusercontent.com/Slourzz/Liora-Extensions/main/packages/demo-audio.lioraext",
+      "sha256": "fb4ce463120835f4437524f7ca551a9da04acdf1d2a93f2c93e10f709e394f4e",
+      "category": "demo",
+      "tags": [
+        "demo",
+        "audio",
+        "test"
+      ],
+      "downloads": 0,
+      "updated_at": "2026-10-22T00:00:00Z",
+      "min_app_version": "1.0"
+    }
+  ]
+}

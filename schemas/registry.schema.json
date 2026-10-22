@@ -1,0 +1,33 @@
+﻿# Esquema del registro de un repositorio de extensiones.
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExtensionRegistry",
+  "type": "object",
+  "required": ["version", "extensions"],
+  "properties": {
+    "version": { "type": "integer" },
+    "updated_at": { "type": "string" },
+    "extensions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "version", "download_url", "sha256"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "display_name": { "type": "string" },
+          "version": { "type": "string" },
+          "description": { "type": "string" },
+          "download_url": { "type": "string", "format": "uri" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-fA-F]{64}$" },
+          "category": { "type": "string" },
+          "tags": { "type": "array", "items": { "type": "string" } },
+          "downloads": { "type": "integer" },
+          "updated_at": { "type": "string" },
+          "min_app_version": { "type": "string" },
+          "icon_url": { "type": "string" }
+        }
+      }
+    }
+  }
+}

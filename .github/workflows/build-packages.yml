@@ -1,0 +1,31 @@
+﻿# Build de los paquetes y refresco del registro.
+name: Build packages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "extensions/**"
+      - "scripts/**"
+      - "registry.json"
+  pull_request:
+    paths:
+      - "extensions/**"
+      - "scripts/**"
+      - "registry.json"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Comprueba que los paquetes del repositorio coinciden con el registro.
+      # Si no coinciden, el registro esta desactualizado y hay que reconstruir.
+      - name: Comprobar los paquetes
+        run: python scripts/build_packages.py --check

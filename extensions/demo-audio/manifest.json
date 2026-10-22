@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "demo-audio",
+  "displayName": "Demo Audio",
+  "version": "1.0.0",
+  "description": "Proveedor de audio de prueba. No habla con ningun servicio: sirve una pista de ejemplo empaquetada en la propia Liora, para comprobar el circuito completo de extensiones.",
+  "author": "Liora",
+  "homepage": "https://github.com/Slourzz/Liora-Extensions",
+  "type": [
+    "metadata_provider",
+    "track_search_provider",
+    "audio_source_provider",
+    "audio_download_provider",
+    "lyrics_provider"
+  ],
+  "minLioraVersion": "1.0",
+  "requiredFeatures": [
+    "jsRuntime@1"
+  ],
+  "permissions": {
+    "network": [],
+    "storage": true,
+    "file": true
+  },
+  "entrypoint": "src/index.js"
+}
