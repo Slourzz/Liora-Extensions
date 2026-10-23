@@ -4,81 +4,33 @@
  * Como funciona
  * -------------
  * YouTube Music se usa por el reproductor web y por la app oficial a traves
- * de su API interna (Innertube). La extension la usa igual que lo hacen los
- * reproductores de terceros de codigo abierto (NewPipe, yt-dlp y similares):
+ * de su API interna (Innertube). La extension separa dos tareas:
  *
- * 1. La busqueda va a `youtubei/v1/search` con el cliente WEB_REMIX, que es
- *    el mismo que usa el reproductor web.
- * 2. La pista concreta se resuelve en `youtubei/v1/player` con el cliente
- *    ANDROID_VR en la version 1.62.27. Ese cliente devuelve la URL del audio
- *    ya firmada y sin los tramites de los clientes mas nuevos, que exigen un
- *    token de "proof of origin" que solo se consigue con la atencion de
- *    YouTube (un reto automatico anti-bot). Aqui no se resuelve ningun reto ni
- *    se falsea ninguna identidad: se usa un cliente publico tal cual.
+ * 1. La busqueda la hace Liora de forma nativa con el cliente WEB_REMIX de
+ *    InnerTubeX. Se piden solo canciones y se devuelven ya convertidas, sin
+ *    bajar y recorrer el JSON completo dentro del motor JavaScript.
+ * 2. La pista concreta la resuelve Liora de forma nativa con InnerTubeX, el
+ *    mismo motor que usa BitChord. Ese motor prueba los clientes de YouTube,
+ *    descifra la firma y el parametro `n` con QuickJS y comprueba con una
+ *    peticion real que la URL firmada responde. La extension solo recibe la
+ *    URL, sus cabeceras y los metadatos; nunca ve las cookies.
  *
- * La extension NO declara capacidad de descarga: entrega un flujo
- * reproducible, que es lo que la app reproduce con Media3.
+ * La extension declara busqueda, metadatos, reproduccion y descarga. El
+ * audio se reproduce con Media3 y se descarga con el gestor de Liora, que
+ * comprueba el tamano antes de publicar el fichero.
  *
  * Aviso sobre las condiciones de uso: el contenido de YouTube Music pertenece
  * a sus titulares y YouTube no autoriza descargas. Esta extension da acceso
- * al mismo contenido que ve el usuario en su propia cuenta, en streaming; no
- * lo guarda ni lo redistribuye.
+ * al mismo contenido que ve el usuario en su propia cuenta; no lo guarda ni
+ * lo redistribuye.
  */
 
 var WEB_KEY = "AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30";
-var PLAYER_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
 var WEB_CLIENT = {
     name: "WEB_REMIX",
     version: "1.20250310.01.00",
     id: 67
 };
-var PLAYER_CLIENT = {
-    name: "ANDROID",
-    version: "20.10.38",
-    id: 3,
-    userAgent: "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip"
-};
-/**
- * Los clientes de la reproduccion, en orden de preferencia.
- *
- * El de VR es el que mejor funciona: su direccion de audio se sirve entera,
- * sin trocear. Los de Android y de iPhone se prueban despues, porque a veces
- * el servidor no acepta el primero.
- */
-var PLAYER_CLIENTS = [
-    {
-        name: "ANDROID_VR",
-        version: "1.62.27",
-        id: 28,
-        key: PLAYER_KEY,
-        userAgent: "com.google.android.apps.youtube.vr.oculus/1.62.27 (Linux; U; Android 12L) gzip",
-        headers: null
-    },
-    {
-        name: "ANDROID",
-        version: "20.10.38",
-        id: 3,
-        key: PLAYER_KEY,
-        userAgent: "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip",
-        headers: null
-    },
-    {
-        name: "IOS",
-        version: "20.10.4",
-        id: 5,
-        key: PLAYER_KEY,
-        userAgent: "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
-        headers: { "Range": "bytes=0-" }
-    },
-    {
-        name: "WEB_REMIX",
-        version: "1.20250310.01.00",
-        id: 67,
-        key: WEB_KEY,
-        userAgent: "Mozilla/5.0",
-        headers: null
-    }
-];
 
 var state = {
     visitorData: null,
@@ -98,6 +50,8 @@ function initialize(config) {
 function cleanup() {
     state.visitorData = null;
     state.signedIn = false;
+    playerCache = {};
+    trackCache = {};
     return { ok: true };
 }
 
@@ -273,128 +227,248 @@ function toTrack(item) {
 
 function searchTracks(request) {
     var query = request.query || "";
-    // Sin filtros: el parametro "params" de la API (el de "solo canciones")
-    // hace que el servidor devuelva albumes y listas en vez de pistas, sin
-    // id de video, y la busqueda se queda vacia.
+    var limit = request.limit ? request.limit : 25;
+    if (!String(query).trim()) return { tracks: [] };
+
+    // Camino rapido: Liora busca de forma nativa con WEB_REMIX y el filtro
+    // de canciones. Devuelve solo las pistas, sin que el JSON pase por Rhino.
+    if (host.youtube && typeof host.youtube.search === "function") {
+        try {
+            var native = host.youtube.search(query, limit);
+            if (native && native.ok && native.tracks) {
+                rememberTracks(native.tracks);
+                host.log.info("Busqueda nativa de YouTube Music: " +
+                    native.tracks.length + " pistas");
+                return { tracks: native.tracks };
+            }
+            host.log.warn("La busqueda nativa fallo: " +
+                (native && native.error ? native.error : "sin respuesta"));
+        } catch (error) {
+            host.log.warn("La busqueda nativa fallo: " + error.message);
+        }
+    }
+
+    // Respaldo: el mismo camino de antes, por si una version de Liora no
+    // tiene el puente nativo o YouTube cambia el formato.
     var data = innertube("music.youtube.com", WEB_KEY, "search", WEB_CLIENT, {
         context: clientContext(WEB_CLIENT),
         query: query
     });
     var items = findAll(data, "musicResponsiveListItemRenderer", [], 0);
     var tracks = [];
-    var limit = request.limit ? request.limit : 25;
     for (var i = 0; i < items.length && tracks.length < limit; i++) {
         var track = toTrack(items[i]);
         if (track && track.title) tracks.push(track);
     }
+    rememberTracks(tracks);
     return { tracks: tracks };
 }
 
-function getTrack(request) {
-    var info = playerInfo(request.trackId);
-    if (!info) return null;
+/**
+ * Busca el catalogo completo para la pantalla de resultados.
+ *
+ * Liora hace las cuatro busquedas de YouTube Music en paralelo (canciones,
+ * albumes, listas y artista) y las devuelve ya parseadas. Si la version de
+ * Liora no tiene ese puente, se cae al camino de solo canciones.
+ */
+function searchCatalog(request) {
+    var query = request.query || "";
+    var limit = request.limit ? request.limit : 20;
+    if (!String(query).trim()) {
+        return { tracks: [], albums: [], playlists: [], artist: null };
+    }
+
+    if (host.youtube && typeof host.youtube.searchCatalog === "function") {
+        try {
+            var native = host.youtube.searchCatalog(query, limit);
+            if (native && native.ok) {
+                rememberTracks(native.tracks);
+                host.log.info("Catalogo nativo de YouTube Music: " +
+                    (native.tracks ? native.tracks.length : 0) + " pistas, " +
+                    (native.albums ? native.albums.length : 0) + " albumes, " +
+                    (native.playlists ? native.playlists.length : 0) + " listas");
+                return {
+                    tracks: native.tracks || [],
+                    albums: native.albums || [],
+                    playlists: native.playlists || [],
+                    artist: native.artist || null
+                };
+            }
+            host.log.warn("El catalogo nativo fallo: " +
+                (native && native.error ? native.error : "sin respuesta"));
+        } catch (error) {
+            host.log.warn("El catalogo nativo fallo: " + error.message);
+        }
+    }
+
+    var fallback = searchTracks(request);
     return {
-        id: request.trackId,
-        title: info.title,
-        artist: info.artist,
-        album: info.album,
-        durationMs: info.durationMs,
-        isrc: null,
-        artworkUrl: info.artworkUrl
+        tracks: fallback.tracks || [],
+        albums: [],
+        playlists: [],
+        artist: null
     };
 }
 
-/** Los datos de la pista y su URL de audio, del endpoint de reproduccion. */
-var playerCache = {};
+/**
+ * Abre un album o una lista y devuelve sus pistas.
+ *
+ * Liora navega la coleccion por su id con InnerTubeX y parsea el JSON en
+ * Kotlin. La extension solo recibe la lista ya limpia. El respaldo por HTTP
+ * existe para versiones antiguas de Liora que no tengan el puente nativo.
+ */
+function getCollection(request) {
+    var id = request.collectionId || "";
+    var limit = request.limit ? request.limit : 200;
+    if (!String(id).trim()) return { tracks: [] };
 
-function playerInfo(videoId) {
-    if (playerCache[videoId]) return playerCache[videoId];
-    var data = null;
-    var client = null;
-    var audio = null;
-    // Se prueban los clientes hasta que uno de de una direccion de audio
-    // que se pueda usar: algunos servidores rechazan el del primero.
-    for (var c = 0; c < PLAYER_CLIENTS.length; c++) {
-        var candidate = PLAYER_CLIENTS[c];
-        var response = innertube("youtubei.googleapis.com", candidate.key, "player", candidate, {
-            context: clientContext(candidate),
-            videoId: videoId
-        }, state.signedIn);
-        var found = pickAudio(response);
-        if (found) {
-            data = response;
-            client = candidate;
-            audio = found;
-            host.log.info("Fuente de audio con el cliente " + candidate.name +
-                " (itag " + found.itag + ")");
-            break;
+    if (host.youtube && typeof host.youtube.collection === "function") {
+        try {
+            var native = host.youtube.collection(id, limit);
+            if (native && native.ok && native.tracks) {
+                rememberTracks(native.tracks);
+                host.log.info("Coleccion nativa de YouTube Music: " +
+                    native.tracks.length + " pistas");
+                return { tracks: native.tracks };
+            }
+            host.log.warn("La coleccion nativa fallo: " +
+                (native && native.error ? native.error : "sin respuesta"));
+        } catch (error) {
+            host.log.warn("La coleccion nativa fallo: " + error.message);
         }
     }
-    if (!audio) {
-        // Ningun cliente dio una direccion: se deja vacio y la app lo dice.
-        playerCache[videoId] = { url: null, title: "", artist: "", durationMs: 0,
-            artworkUrl: null, headers: {}, mimeType: null, bitrateKbps: null,
-            sampleRateHz: null };
+
+    var data = innertube("music.youtube.com", WEB_KEY, "browse", WEB_CLIENT, {
+        context: clientContext(WEB_CLIENT),
+        browseId: "VL" + id
+    });
+    var shelves = findAll(data, "musicPlaylistShelfRenderer", [], 0);
+    var source = shelves.length ? shelves[0] : data;
+    var items = findAll(source, "musicResponsiveListItemRenderer", [], 0);
+    var tracks = [];
+    for (var i = 0; i < items.length && tracks.length < limit; i++) {
+        var track = toTrack(items[i]);
+        if (track && track.title) tracks.push(track);
+    }
+    rememberTracks(tracks);
+    return { tracks: tracks };
+}
+
+/** Las pistas que ya han salido en una busqueda, para no volver a resolverlas. */
+var trackCache = {};
+
+function rememberTracks(tracks) {
+    if (!tracks) return;
+    for (var i = 0; i < tracks.length; i++) {
+        var track = tracks[i];
+        if (track && track.id) trackCache[track.id] = track;
+    }
+}
+
+function contractTrack(track) {
+    return {
+        id: track.id,
+        title: track.title || "",
+        artist: track.artist || "",
+        album: track.album || "",
+        durationMs: track.durationMs || 0,
+        isrc: track.isrc || null,
+        artworkUrl: track.artworkUrl || null
+    };
+}
+
+function getTrack(request) {
+    // La busqueda ya trae titulo, artista, album, duracion y portada. No hace
+    // falta resolver el audio solo para devolver la ficha: hacerlo bloqueaba
+    // el hilo de la extension durante la resolucion (y con ella la busqueda).
+    var known = trackCache[request.trackId];
+    if (known) return contractTrack(known);
+    var info = playerCache[request.trackId];
+    if (info && (info.title || info.artist || info.durationMs)) {
+        return contractTrack({
+            id: request.trackId,
+            title: info.title,
+            artist: info.artist,
+            album: info.album,
+            durationMs: info.durationMs,
+            artworkUrl: info.artworkUrl
+        });
+    }
+    return null;
+}
+
+/** Los datos de la pista, ya resueltos por el motor nativo de Liora. */
+var playerCache = {};
+
+function playerCacheValid(info) {
+    if (!info) return false;
+    if (!info.url) return false;
+    if (!info.expiresAtMs) return true;
+    return Date.now() < (info.expiresAtMs - 60000);
+}
+
+function emptyInfo() {
+    return {
+        url: null,
+        title: "",
+        artist: "",
+        durationMs: 0,
+        artworkUrl: null,
+        headers: {},
+        mimeType: null,
+        bitrateKbps: null,
+        sampleRateHz: null,
+        expiresAtMs: 0,
+        clientName: ""
+    };
+}
+
+/**
+ * Pide a Liora que resuelva el audio.
+ *
+ * La app usa InnerTubeX: elige cliente, descifra la firma y el parametro `n`
+ * con QuickJS y prueba la URL contra el CDN. Si el CDN rechaza una fuente,
+ * prueba otro cliente antes de darse por vencida. Aqui solo se guarda el
+ * resultado para no repetir la resolucion en cada llamada.
+ */
+function playerInfo(videoId) {
+    var cached = playerCache[videoId];
+    if (playerCacheValid(cached)) return cached;
+
+    var resolved = host.youtube.resolve(videoId);
+    if (!resolved || !resolved.ok || !resolved.url) {
+        var reason = (resolved && resolved.error) ? resolved.error : "sin fuente de audio";
+        host.log.warn("No se pudo resolver " + videoId + ": " + reason);
+        playerCache[videoId] = emptyInfo();
         return playerCache[videoId];
     }
-    var details = data.videoDetails || {};
-    var artwork = null;
-    var thumbs = details.thumbnail && details.thumbnail.thumbnails;
-    if (thumbs && thumbs.length) artwork = thumbs[thumbs.length - 1].url || null;
+
+    var headers = resolved.headers || {};
     var info = {
-        title: details.title || "",
-        artist: details.author || "",
+        title: resolved.title || "",
+        artist: resolved.artist || "",
         album: "",
-        durationMs: details.lengthSeconds ? details.lengthSeconds * 1000 : 0,
-        artworkUrl: artwork,
-        url: audio ? audio.url : null,
-        mimeType: audio ? String(audio.mimeType).split(";")[0].trim() : null,
-        bitrateKbps: audio && audio.bitrate ? Math.round(audio.bitrate / 1000) : null,
-        sampleRateHz: audio && audio.audioSampleRate ? audio.audioSampleRate : null,
-        // El servidor de video comprueba el agente de usuario: sin el mismo
-        // que pidio la fuente, responde 403. Cada cliente pide ademas lo que
-        // necesita (algunos, la peticion por rango).
-        headers: headersFor(client)
+        durationMs: resolved.durationMs || 0,
+        artworkUrl: resolved.artworkUrl || null,
+        url: resolved.url,
+        mimeType: resolved.mimeType || "audio/mp4",
+        bitrateKbps: resolved.bitrateKbps || null,
+        sampleRateHz: resolved.sampleRateHz || null,
+        headers: headers,
+        expiresAtMs: resolved.expiresAtMs || 0,
+        clientName: resolved.clientName || "",
+        itag: resolved.itag || 0
     };
+    host.log.info("Fuente de audio con " + info.clientName +
+        " (itag " + info.itag + ", " + info.mimeType + ")");
     playerCache[videoId] = info;
     return info;
 }
 
-/** Las cabeceras que pide cada cliente al servidor de video. */
-function headersFor(client) {
-    var headers = { "User-Agent": client.userAgent };
-    if (client.headers) {
-        for (var key in client.headers) headers[key] = client.headers[key];
-    }
-    return headers;
-}
-
-/** El formato de audio mejor de una respuesta del reproductor. */
-function pickAudio(data) {
-    var formats = (data.streamingData && data.streamingData.adaptiveFormats) || [];
-    var audio = null;
-    var seen = [];
-    for (var i = 0; i < formats.length; i++) {
-        var format = formats[i];
-        if (!format.mimeType || format.mimeType.indexOf("audio/") !== 0) continue;
-        seen.push(format.itag + (format.url ? ":url" : (format.signatureCipher ? ":cifrado" : ":?")));
-        if (!format.url) continue;
-        // itag 140 es AAC-LC en m4a: el que mejor se lleva Media3.
-        if (!audio || format.itag === 140) audio = format;
-    }
-    if (seen.length) host.log.info("Formatos de audio: " + seen.join(", "));
-    return audio;
-}
-
 function checkAvailability(request) {
-    var info = playerInfo(request.trackId);
-    if (!info || !info.url) {
-        return {
-            available: false,
-            kinds: [],
-            reason: "YouTube Music no ha devuelto una fuente de audio para esta pista"
-        };
-    }
+    // No se resuelve el audio solo para responder a esto: la resolucion se
+    // hace al reproducir o al descargar. Asi la lista de resultados no espera
+    // a YouTube y sigue siendo instantanea.
     return { available: true, kinds: ["playable", "downloadable"], quality: "AAC" };
 }
 
@@ -410,8 +484,10 @@ function getAudioSource(request) {
         bitrateKbps: info.bitrateKbps,
         sampleRateHz: info.sampleRateHz,
         durationMs: info.durationMs,
+        expiresAtMs: info.expiresAtMs || 0,
         headers: info.headers || {},
-        notes: "Flujo de YouTube Music (cliente ANDROID 20.10.38); el enlace caduca"
+        notes: "Flujo de YouTube Music resuelto con InnerTubeX (" +
+            (info.clientName || "cliente automático") + "); el enlace caduca"
     };
 }
 
@@ -432,8 +508,9 @@ function getDownloadUrl(request) {
         mimeType: info.mimeType || "audio/mp4",
         bitrateKbps: info.bitrateKbps,
         durationMs: info.durationMs,
+        expiresAtMs: info.expiresAtMs || 0,
         headers: info.headers || {},
-        notes: "Descarga del flujo de YouTube Music; el enlace caduca"
+        notes: "Descarga del flujo de YouTube Music resuelto con InnerTubeX; el enlace caduca"
     };
 }
 
@@ -452,7 +529,7 @@ function download(request) {
             errorType: "not_supported"
         };
     }
-    var result = host.file.download(info.url, request.outputPath);
+    var result = host.file.download(info.url, request.outputPath, info.headers || {});
     if (!result || !result.ok || !result.success) {
         return {
             success: false,
@@ -472,6 +549,8 @@ registerExtension({
     initialize: initialize,
     cleanup: cleanup,
     searchTracks: searchTracks,
+    searchCatalog: searchCatalog,
+    getCollection: getCollection,
     getTrack: getTrack,
     checkAvailability: checkAvailability,
     getAudioSource: getAudioSource,
